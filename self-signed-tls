@@ -40,6 +40,7 @@ Generate self-signed TLS certificate using OpenSSL
   -d|--duration        Validity duration of the certificate (in days)
   -h|--help            Display this help and exit
   -v|--verbose         Verbose output
+  -j|--subjectAltName  Subject Alternative Name (separated by comma)
 "
 }
 
@@ -67,6 +68,7 @@ while [ "$1" != "" ]; do
     -p|--path) OUTPATH=$VALUE; testPath ;;
 	-d|--duration) DURATION=$VALUE ;;
     -v|--verbose) VERBOSE=1 ;;
+    -j|--subjectAltName) subjectAltName=$VALUE ;;
     *) echo "ERROR: unknown parameter \"$PARAM\""; help; exit 1 ;;
   esac
   shift
@@ -115,6 +117,12 @@ checkVariables() {
     echo -n "Email Address []:"
     read emailAddress
   fi
+
+  # Subject Alternative Name
+  if [ -z $subjectAltName ]; then
+    echo -n "Subject Alternative Name (separated by comma):"
+    read subjectAltName 
+  fi
 }
 
 # Show variable values
@@ -129,6 +137,7 @@ showVals() {
   echo "Output Path: ${OUTPATH}";
   echo "Certificate Duration (Days): ${DURATION}";
   echo "Verbose: ${VERBOSE}";
+  echo "SubjectAlternativeName: ${subjectAltName}";
 }
 
 # Init
@@ -171,8 +180,22 @@ keyUsage = digitalSignature, nonRepudiation, keyEncipherment, dataEncipherment
 subjectAltName = @alt_names
 
 [alt_names]
-DNS.1 = ${CN}
 EOF
+}
+
+appendSubjectAltName() {
+    if [ -z $subjectAltName ]
+    then
+        echo DNS.1 = ${CN} >> ${tmp}/v3.ext
+    else
+        index=1
+        IFS=',' read -ra ARR <<< "${subjectAltName}"
+        for i in "${ARR[@]}"
+        do
+            echo DNS.$index = $i >> ${tmp}/v3.ext
+            let index++
+        done
+    fi
 }
 
 # Build TLS Certificate
@@ -188,6 +211,8 @@ build() {
 
   # Create v3.ext configuration file
   buildExtCnf
+
+  appendSubjectAltName
 
   # Server key
   openssl req -new -sha256 -nodes -out ${OUTPATH}${FILENAME}.csr -newkey rsa:2048 -keyout ${OUTPATH}${FILENAME}.key -config <( cat ${tmp}/tmp.csr.cnf )
